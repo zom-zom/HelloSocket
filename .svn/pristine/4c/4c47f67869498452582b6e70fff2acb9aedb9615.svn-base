@@ -1,0 +1,287 @@
+#define WIN32_LEAN_AND_MEAN
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+
+#include <Windows.h>
+#include <WinSock2.h>
+#include <vector>
+#include <iostream>
+using namespace std;
+//#pragma comment(lib,"ws2_32.lib")
+
+#define MySuceed 0
+#define MyFailed 1
+
+enum CMD
+{
+	CMD_LOGIN,
+	CMD_LOGINOUT,
+	CMD_LOGIN_RESULT,
+	CMD_LOGINOUT_RESULT,
+	CMD_NEW_USER_JOIN,
+	CMD_ERROR
+};
+struct DataHeader
+{
+	short dataLenth;
+	short cmd;
+};
+
+//DataPackage
+struct Login :public DataHeader
+{
+	Login()
+	{
+		dataLenth = sizeof(Login);
+		cmd = CMD_LOGIN;
+	}
+	char UserName[32];
+	char PassWord[32];
+};
+struct LoginOut :public DataHeader
+{
+	LoginOut()
+	{
+		dataLenth = sizeof(LoginOut);
+		cmd = CMD_LOGINOUT;
+	}
+	char UserName[32];
+};
+struct LoginResult :public DataHeader
+{
+	LoginResult()
+	{
+		dataLenth = sizeof(LoginResult);
+		cmd = CMD_LOGIN_RESULT;
+		result = MySuceed;
+	}
+	int result;
+};
+struct LoginOutResult :public DataHeader
+{
+	LoginOutResult()
+	{
+		dataLenth = sizeof(LoginOutResult);
+		cmd = CMD_LOGINOUT_RESULT;
+		result = MySuceed;
+	}
+
+	int result;
+};
+struct NewUserJoin :public DataHeader
+{
+	NewUserJoin()
+	{
+		dataLenth = sizeof(NewUserJoin);
+		cmd = CMD_NEW_USER_JOIN;
+		sock = 0;
+	}
+	SOCKET sock;
+};
+vector<SOCKET> g_clients;
+
+int processor(SOCKET& _cSock)
+{
+	//创建缓冲区
+	char szRecv[1024] = {};
+
+	///5.接收客户端数据
+	int nLen = recv(_cSock, szRecv, sizeof(DataHeader), 0);
+	DataHeader* header = (DataHeader*)szRecv;
+
+
+	if (nLen <= 0)
+	{
+		printf("客户端<socket=%d>已退出，任务结束\n", _cSock);
+		return -1;
+	}
+	///6.处理请求
+	switch (header->cmd)
+	{
+	case CMD_LOGIN:
+	{
+		//因为第一次接收头时已经占用了前面的字节不够用了  这里需要偏移才能完整接收 长度也得减
+		recv(_cSock, szRecv + sizeof(DataHeader), header->dataLenth - sizeof(DataHeader), 0);
+		Login* login = (Login*)szRecv;
+
+		cout << "-----------------------------" << endl;
+		printf("收到客户端<socket=%d>命令: CMD_LOGIN \n数据长度: %d\n用户名: %s\n密码:%s\n",
+			_cSock, login->dataLenth, login->UserName, login->PassWord);
+		cout << "-----------------------------" << endl;
+		//判断用户密码是否正确的过程
+
+		if (0 == strcmp(login->PassWord, "hdw123"))
+		{
+			LoginResult _result;
+			send(_cSock, (const char*)&_result, sizeof(LoginResult), 0);
+		}
+		else
+		{
+			LoginResult ret;
+			ret.result = MyFailed;
+			send(_cSock, (const char*)&ret, sizeof(LoginResult), 0);
+		}
+
+		break;
+	}
+	case CMD_LOGINOUT:
+	{
+		//因为第一次接收头时已经占用了前面的字节不够用了  这里需要偏移才能完整接收 长度也得减
+		recv(_cSock, szRecv + sizeof(DataHeader), header->dataLenth - sizeof(DataHeader), 0);
+		LoginOut* loginout = (LoginOut*)szRecv;
+
+		cout << "-----------------------------" << endl;
+		printf("收到客户端<socket=%d>命令: CMD_LOGINOUT \n数据长度: %d\n用户名: %s\n",
+			_cSock, loginout->dataLenth, loginout->UserName);
+		cout << "-----------------------------" << endl;
+
+		//判断用户是否正确的过程 
+		if (0 == strcmp("tyzhou", loginout->UserName))
+		{
+			LoginOutResult ret;
+			send(_cSock, (char*)&ret, sizeof(LoginOutResult), 0);
+		}
+		else
+		{
+			LoginOutResult ret;
+			ret.result = MyFailed;
+			send(_cSock, (char*)&ret, sizeof(LoginOutResult), 0);
+		}
+		break;
+	}
+	default:
+	{
+		DataHeader header = { 0,CMD_ERROR };
+		send(_cSock, (const char*)&header, sizeof(DataHeader), 0);
+
+	}
+	break;
+	}
+}
+
+int main()
+{
+	WORD ver = MAKEWORD(2, 2);
+	WSADATA dat;
+	WSAStartup(ver, &dat);
+	///
+	//用Socket API建立简易TCP服务端
+	//1.建立一个Socket 套接字
+	SOCKET _sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);//所填参数 ipv4  流  tcp协议
+
+	///2.绑定用于接收客户端连接的网络端口
+	sockaddr_in _sin = {}; //后面+个_in类型 方便手写此类型中的变量
+	_sin.sin_family = AF_INET;
+	_sin.sin_port = htons(4567); //host to net unsigned short
+	_sin.sin_addr.S_un.S_addr = INADDR_ANY;//any则是用电脑上任意一个ip都作为服务端ip地址\
+											inet_addr("127.0.0.1")此种写法绑定一个地址
+	if (SOCKET_ERROR == bind(_sock, (sockaddr*)&_sin, sizeof(_sin)))
+		cout << "ERROR 绑定用于接受客户端连接的网络端口失败" << endl;
+	else
+		cout << "SUCCEED 绑定网络端口成功" << endl;
+
+	///3.listen 监听网络端口
+	if (SOCKET_ERROR == listen(_sock, 5))//listen()第二参数为等待几个人同时连接
+		cout << "ERROR 监听网络端口失败" << endl;
+	else
+		cout << "SUCCEED 监听网络端口成功" << endl;
+
+
+	//char _recvBuf[128] = {};
+	while (true)
+	{
+		//伯克利套接字 BSD Socket
+		fd_set fdRead;//描述符(socket) 集合
+		fd_set fdWrite;
+		fd_set fdExp;
+		//清理集合
+		FD_ZERO(&fdRead);
+		FD_ZERO(&fdWrite);
+		FD_ZERO(&fdExp);
+		//将描述符（socket）加入集合中
+		FD_SET(_sock, &fdRead);
+		FD_SET(_sock, &fdWrite);
+		FD_SET(_sock, &fdExp);
+		//将接收到的描述符（socket）加入 集合中
+		for (int n = (int)g_clients.size() - 1; n >= 0; n--)
+		{
+			FD_SET(g_clients[n], &fdRead);
+		}
+		//nfds 是一个整数值，是指fd_set集合中的描述符(socket)的范围，而不是数量
+		//既是所有文件描述符最大值+1 在Windows中这个参数可以写0
+
+		timeval t = { 1,0 };//无需等待有数据能查询到   如果最后一个参数NULL则是堵塞式
+		int ret = select(_sock + 1, &fdRead, &fdWrite, &fdExp, &t);
+		cout << "空闲时间做其他事" << endl;
+		if (ret < 0)
+		{
+			cout << "select任务结束" << endl;
+			break;
+		}
+		//判断描述符（socket）是否在集合中
+		if (FD_ISSET(_sock, &fdRead))
+		{
+			FD_CLR(_sock, &fdRead);
+			///4.accept 等待接受客户端连接
+			sockaddr_in clientAddr = {};//用于接收客户端地址的
+			int nAddrLen = sizeof(sockaddr_in);
+			SOCKET _cSock = INVALID_SOCKET;//将接受的客户端先初始化为无效的
+
+			_cSock = accept(_sock, (sockaddr*)&clientAddr, &nAddrLen);
+			if (INVALID_SOCKET == _cSock)
+			{
+				cout << "ERROR, 接受到无效客户端SOCKET" << endl;
+			}
+			else
+			{
+				for (int n = (int)g_clients.size() - 1; n >= 0; n--)
+				{
+					NewUserJoin userjoin;
+
+					userjoin.sock = g_clients[n];
+
+					send(g_clients[n], (const char*)&userjoin, sizeof(NewUserJoin), 0);
+				}
+				g_clients.push_back(_cSock);
+			
+				cout << "新客户端加入: IP = " << inet_ntoa(clientAddr.sin_addr) << endl;//inet_ntoa()将ip地址转换为可读字符串
+			}
+			
+		}
+		//循环处理集合中 可读的描述符（socket）
+		for (int n = 0; n < fdRead.fd_count; n++)
+		{
+			
+			if (-1 == processor(fdRead.fd_array[n]))
+			{
+				auto iter = find(g_clients.begin(), g_clients.end(), fdRead.fd_array[n]);
+				if (iter != g_clients.end())
+				{
+
+					//closesocket(*iter);//关掉从vector要清除的套接字
+					g_clients.erase(iter);
+				}
+
+			}
+		}
+
+	}
+		//send(_cSock, msgBuf, msglen, 0);//第三个参数则是加上/n的长度  最后一个参数传的默认参数0
+
+	//关闭接收的socket 套接字
+	for (int n = (int)g_clients.size() - 1; n >= 0; n--)
+	{
+		closesocket(g_clients[n]);
+	}
+
+	///8.关闭套接字 closesocket
+	closesocket(_sock);
+	cout << "已退出，任务结束" << endl;
+
+	///
+	WSACleanup();
+	getchar();
+	return 0;
+
+
+}
+

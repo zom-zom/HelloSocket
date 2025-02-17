@@ -1,0 +1,78 @@
+#ifdef _WIN32
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
+#include "EasyTcpClient.hpp"
+#include <thread>
+using namespace std;
+//用于关闭主线程while循环的变量
+bool g_bRun = true;
+//线程Thread
+void cmdThread(EasyTcpClient &client)
+{
+	while (true)
+	{
+		char cmdBuf[256] = {};
+		scanf("%s", cmdBuf);
+
+		if (0 == strcmp(cmdBuf, "exit"))
+		{
+			cout << "cmdThread线程退出" << endl;
+			client.setsockError();
+			break;
+		}
+		//4.向服务器发送请求命令
+		else if (0 == strcmp(cmdBuf, "login"))
+		{
+			Login login;
+			strcpy(login.UserName, "tyzhou");
+			//printf("用户名:tyzhou\n请输入密码: ");
+			//scanf("%s", login.PassWord);
+			strcpy(login.PassWord, "hdw123");
+			client.SendData(&login);
+			//send(_sock, (const char*)&login, sizeof(Login), 0);
+		}
+		else if (0 == strcmp(cmdBuf, "loginout"))
+		{
+			LoginOut loginout;
+			strcpy(loginout.UserName, "tyzhou");
+			client.SendData(&loginout);
+			//send(_sock, (const char*)&loginout, sizeof(LoginOut), 0);
+		}
+		else
+		{
+			cout << "不支持的命令" << endl;
+		}
+	}
+}
+
+int main()
+{
+	EasyTcpClient client;
+	EasyTcpClient client2;
+	client.InitSocket();
+	client.Connect("192.168.79.140", 4567);
+	client2.InitSocket();
+		//127.0.0.1
+	client2.Connect("192.168.79.140", 4568);
+
+	//启动线程函数
+	thread t1(cmdThread, ref(client));
+	t1.detach();
+
+ 	thread t2(cmdThread, ref(client2));
+ 	t2.detach();
+	while (client.isRun() || client2.isRun())
+	{
+			client.OnRun();
+			client2.OnRun();
+	}
+
+	client.Close();
+	client2.Close();
+
+	return 0;
+
+
+}
