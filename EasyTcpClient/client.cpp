@@ -10,36 +10,17 @@ using namespace std;
 //用于关闭主线程while循环的变量
 bool g_bRun = true;
 //线程Thread
-void cmdThread(EasyTcpClient &client)
+void cmdThread()
 {
 	while (true)
 	{
 		char cmdBuf[256] = {};
 		scanf("%s", cmdBuf);
-		//strcpy(cmdBuf, "login");
 		if (0 == strcmp(cmdBuf, "exit"))
 		{
 			cout << "cmdThread线程退出" << endl;
-			client.setsockError();
+			g_bRun = false;
 			break;
-		}
-		//4.向服务器发送请求命令
-		else if (0 == strcmp(cmdBuf, "login"))
-		{
-			Login login;
-			strcpy(login.UserName, "请输入你是贺俊铭用英语哈哈哈哈");
-			printf("请输入你是贺俊铭\n请输入密码: ");	//用户名:tyzhou
-			scanf("%s", login.PassWord);
-			//strcpy(login.PassWord, "hdw123");
-			client.SendData(&login);
-			//send(_sock, (const char*)&login, sizeof(Login), 0);
-		}
-		else if (0 == strcmp(cmdBuf, "loginout"))
-		{
-			LoginOut loginout;
-			strcpy(loginout.UserName, "tyzhou");
-			client.SendData(&loginout);
-			//send(_sock, (const char*)&loginout, sizeof(LoginOut), 0);
 		}
 		else
 		{
@@ -51,25 +32,44 @@ void cmdThread(EasyTcpClient &client)
 
 int main()
 {
-	EasyTcpClient client;
-	client.InitSocket();
-	client.Connect("115.236.153.174", 19576);	//127.0.0.1
+	//FD_SETSIZE - 1
+	const int nCount = 1000;
+	EasyTcpClient* client[nCount];
+	//EasyTcpClient client;
+	//client.InitSocket();
+	//client.Connect("127.0.0.1", 4567);//192.168.68.128
+	int a = sizeof(EasyTcpClient);
+	for (int i = 0; i < nCount; i++)
+	{
+		client[i] = new EasyTcpClient();
+		client[i]->InitSocket();
+		client[i]->Connect("192.168.68.128", 4567);	//115.236.153.174  19576
+	}
+
 
 	//  1kt034em37362.vicp.fun:19576
 	//启动线程函数
-	thread t1(cmdThread, ref(client));
+	thread t1(cmdThread);
 	t1.detach();
 
+	Login login;
+	strcpy(login.UserName, "tyzhou");
+	strcpy(login.PassWord, "hdw123");
 
-
-	while (client.isRun())
+	while (g_bRun)
 	{
-			client.OnRun();
-
+		for (int i = 0; i < nCount; i++)
+		{
+			client[i]->SendData(&login);
+			client[i]->OnRun();
+		}
 	}
-
-	client.Close();
-
+	//client.Close();
+	for (int i = 0; i < nCount; i++)
+	{
+		client[i]->Close();
+		delete client[i];
+	}
 	return 0;
 
 

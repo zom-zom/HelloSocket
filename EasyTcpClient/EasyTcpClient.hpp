@@ -102,6 +102,7 @@ public:
 	}
 	
 	//处理网络消息
+	int _nCount = 0;
 	bool OnRun()
 	{
 		if (isRun())
@@ -109,7 +110,7 @@ public:
 			fd_set fdRead;
 			FD_ZERO(&fdRead);
 			FD_SET(_sock, &fdRead);
-			timeval t = { 1,0 };
+			timeval t = { 0,0 };
 			int ret = select(_sock + 1, &fdRead, 0, 0, &t);
 			if (ret < 0)
 			{
@@ -126,7 +127,7 @@ public:
 				fd_set fdRead;
 				FD_ZERO(&fdRead);
 				FD_SET(_sock, &fdRead);
-				timeval t = { 1,0 };
+				timeval t = { 0,1 };
 				int ret = select(_sock + 1, &fdRead, 0, 0, &t);
 				if (ret < 0)
 				{
@@ -161,8 +162,11 @@ public:
 	//接收数据 处理粘包 少包
 	int RecvData(SOCKET cSock)
 	{
-		//接收服务端数据
-		int nLen = (int)recv(cSock, _szRecv, sizeof(DataHeader), 0);
+		/// 接收服务端数据
+		int nLen = (int)recv(cSock, _szRecv, RECV_BUFF_SIZE, 0);
+		//收到服务端数据
+		//printf("收到服务端数据长度 nLen = %d\n", nLen);
+
 		if (nLen <= 0)
 		{
 			printf("与服务端<socket=%d>断开连接，任务结束\n", cSock);
@@ -188,7 +192,6 @@ public:
 				memcpy(_szMsgBuf, _szMsgBuf + header->dataLenth, nSize);
 				//消息缓冲区的数据尾部位置前移
 				_lastPos = nSize;
-
 			}
 			else
 			{
@@ -197,7 +200,7 @@ public:
 			}
 		}
 		return 0;
-		
+		//
 	}
 	//响应网络消息
 	void OnNetMsg(DataHeader* header)
@@ -210,28 +213,26 @@ public:
 			
 			LoginResult* loginret = (LoginResult*)header;
 
-			cout << "-----------------------------" << endl;
-			printf("<socket=%d>收到服务端命令: CMD_LOGIN_RESULT 数据长度: %d\n返回值: %d\n",
-				_sock, loginret->dataLenth, loginret->result);
-			cout << "-----------------------------" << endl;
-			if (MySuceed == loginret->result)
-				cout << "登陆成功" << endl;
-			else if (MyFailed == loginret->result)
-				cout << "登陆失败" << endl;
+			//printf("<socket=%d>收到服务端命令: CMD_LOGIN_RESULT 数据长度: %d\n返回值: %d\n",
+			//	_sock, loginret->dataLenth, loginret->result);
+			//if (MySuceed == loginret->result)
+			//	cout << "登陆成功" << endl;
+			//else if (MyFailed == loginret->result)
+			//	cout << "登陆失败" << endl;
 		}
 		break;
 		case CMD_LOGINOUT_RESULT:
 		{
 			LoginOutResult* loginoutret = (LoginOutResult*)header;
 
-			cout << "-----------------------------" << endl;
-			printf("<socket=%d>收到服务端命令: CMD_LOGINOUTR_RESULT 数据长度: %d\n返回值: %d\n",
-				_sock, loginoutret->dataLenth, loginoutret->result);
-			cout << "-----------------------------" << endl;
-			if (MySuceed == loginoutret->result)
-				cout << "退出成功" << endl;
-			else if (MyFailed == loginoutret->result)
-				cout << "退出失败" << endl;
+			//cout << "-----------------------------" << endl;
+			//printf("<socket=%d>收到服务端命令: CMD_LOGINOUTR_RESULT 数据长度: %d\n返回值: %d\n",
+			//	_sock, loginoutret->dataLenth, loginoutret->result);
+			////cout << "-----------------------------" << endl;
+			//if (MySuceed == loginoutret->result)
+			//	cout << "退出成功" << endl;
+			//else if (MyFailed == loginoutret->result)
+			//	cout << "退出失败" << endl;
 		}
 		break;
 		case CMD_NEW_USER_JOIN:
@@ -250,7 +251,7 @@ public:
 		default:
 		{
 			printf("<socket=%d>收到未定义消息, 数据长度: %d\n",
-				_sock, header->dataLenth); 
+				_sock, header->dataLenth);
 		}
 		}
 	}
@@ -265,6 +266,7 @@ public:
 	{
 		if (isRun() && header)
 		{
+			//printf("send a message, len = %d\n", header->dataLenth);
 			return send(_sock, (const char*)header, header->dataLenth, 0);
 		}
 		return SOCKET_ERROR;
